@@ -1,0 +1,554 @@
+
+---
+title: "Propensity_Score_Matching_RE_MatchIt_con"
+output:
+  html_document:
+    toc: true
+---
+
+
+```{r}
+### Propensity score matching stratified by race/ethnicity; consolidate into one R notebook.
+#### Important: Make sure to set working directory to Demographics
+```
+
+```{r setup, include=FALSE}
+# Followed this site for reference: https://frankzheng.me/en/2020/04/knitr-root-directory/
+knitr::opts_knit$set(root.dir = "working/directory/to/Demographics/")
+```
+
+
+```{r}
+##### Import packages
+```
+
+
+```{r}
+install.packages("MatchIt")
+install.packages("tidyverse")
+```
+
+
+```{r}
+# install.packages("DBI")
+library(DBI)
+library(tidyverse)
+library(dplyr)
+library(dbplyr)
+library(MatchIt)
+library(ggplot2)
+```
+
+
+```{r}
+#### Import data
+```
+
+
+```{r}
+# Read in ad demographics data
+con_demo <- read.csv(file = 'con_demographics.csv')
+```
+
+
+```{r}
+# Use names to get columns for con_demo and con_demo
+names(con_demo)
+```
+
+
+```{r}
+###### AD patients stratified by Race/Ethnicity
+```
+
+
+```{r}
+con_re_value_counts = as.data.frame(table(con_demo$UCSFDerivedRaceEthnicity_Clean))
+```
+
+
+```{r}
+# Need to add minus sign in front of column to order by descending
+con_re_value_counts[order(-con_re_value_counts$Freq),]
+```
+
+
+```{r}
+###### Control patients stratified by Race/Ethnicity
+```
+
+
+```{r}
+con_re_value_counts = as.data.frame(table(con_demo$UCSFDerivedRaceEthnicity_Clean))
+```
+
+
+```{r}
+con_re_value_counts[order(-con_re_value_counts$Freq),]
+```
+
+
+```{r}
+#### MatchIt strategy for both Alzheimer's and control patients:
+##### Latinx - Black; Black - Asian; Asian - White
+```
+
+
+```{r}
+##### Create dataframes for each race/ethnicity for AD
+```
+
+
+```{r}
+Black_con_all = con_demo[con_demo$UCSFDerivedRaceEthnicity_Clean == 'Black or African American',]
+Asian_con_all = con_demo[con_demo$UCSFDerivedRaceEthnicity_Clean == 'Asian',]
+Latinx_con_all = con_demo[con_demo$UCSFDerivedRaceEthnicity_Clean == 'Latinx',]
+White_con_all = con_demo[con_demo$UCSFDerivedRaceEthnicity_Clean == 'White or Caucasian',]
+```
+
+
+```{r}
+#### 1. MatchIt: Latinx and Black patients
+```
+
+
+```{r}
+# Latinx patients; UCSFDerivedRaceEthnicity_Clean=1
+con_l_cohort <- Latinx_con_all
+rownames(con_l_cohort) <- con_l_cohort$person_id
+#con_l_cohort$person_id <- NULL
+con_l_cohort[,'UCSFDerivedRaceEthnicity_Clean'] <- rep(1,nrow(con_l_cohort))
+sprintf("con_l_cohort dimensions: %s %s", dim(con_l_cohort)[1],dim(con_l_cohort)[2])
+head(con_l_cohort)
+```
+
+
+```{r}
+# Black patients; UCSFDerivedRaceEthnicity_Clean=0
+con_b_cohort <- Black_con_all
+rownames(con_b_cohort) <- con_b_cohort$person_id
+#con_b_cohort$person_id <- NULL
+con_b_cohort[,'UCSFDerivedRaceEthnicity_Clean'] <- rep(0,nrow(con_b_cohort))
+sprintf("con_b_cohort dimensions: %s %s", dim(con_b_cohort)[1],dim(con_b_cohort)[2])
+head(con_b_cohort)
+```
+
+
+```{r}
+# Put them in one giant dataframe. 
+con_lb_pts <- rbind(con_l_cohort, con_b_cohort)
+con_lb_pts <- con_lb_pts[complete.cases(con_lb_pts),]
+print(sum(is.na(con_lb_pts))) # Make sure no missing values
+```
+
+
+```{r}
+head(con_lb_pts)
+```
+
+
+```{r}
+# run matchit
+start_time <- Sys.time()
+
+m.out = matchit(UCSFDerivedRaceEthnicity_Clean ~ estimated_age + gender_concept_id + death_status, 
+                data = con_lb_pts, method = "nearest", ratio = 1, discard = 'both', reestimate = TRUE)
+m.data <- match.data(m.out,distance='pscore')
+
+end_time <- Sys.time()
+print(end_time - start_time)
+```
+
+
+```{r}
+summary(m.out, un = TRUE)
+```
+
+
+```{r}
+# m.data is an R dataframe
+is.data.frame(m.data)
+```
+
+
+```{r}
+# Save results to MatchIt variable
+LB_con_MI <- m.data
+```
+
+
+```{r}
+
+##### Latinx - Black MatchIt Results
+```
+
+
+```{r}
+# Latinx patients; n=~422 (because of common support that may not match if
+# matches are too far away)
+L_con_MI <- LB_con_MI[LB_con_MI$UCSFDerivedRaceEthnicity_Clean == 1,]
+
+# Only keep non-MatchIt columns
+L_con_MI <- L_con_MI[, c(1:10)]
+
+print(dim(L_con_MI))
+```
+
+
+```{r}
+# Black patients; n= ~422
+B_con_MI <- LB_con_MI[LB_con_MI$UCSFDerivedRaceEthnicity_Clean == 0,]
+
+# Only keep non-MatchIt columns
+B_con_MI <- B_con_MI[, c(1:10)]
+
+print(dim(B_con_MI))
+```
+
+
+
+
+
+```{r}
+
+#### 2. MatchIt: Black and Asian patients
+```
+
+```{r}
+# Black patients; UCSFDerivedRaceEthnicity_Clean=1
+con_bmi_cohort <- B_con_MI
+rownames(con_bmi_cohort) <- con_bmi_cohort$person_id
+#con_bmi_cohort$person_id <- NULL
+con_bmi_cohort[,'UCSFDerivedRaceEthnicity_Clean'] <- rep(1,nrow(con_bmi_cohort))
+sprintf("con_bmi_cohort dimensions: %s %s", dim(con_bmi_cohort)[1],dim(con_bmi_cohort)[2])
+```
+
+```{r}
+# Asian patients; UCSFDerivedRaceEthnicity_Clean=0
+con_a_cohort <- Asian_con_all
+rownames(con_a_cohort) <- con_a_cohort$person_id
+#con_a_cohort$person_id <- NULL
+con_a_cohort[,'UCSFDerivedRaceEthnicity_Clean'] <- rep(0,nrow(con_a_cohort))
+sprintf("con_a_cohort dimensions: %s %s", dim(con_a_cohort)[1],dim(con_a_cohort)[2])
+```
+
+
+```{r}
+head(con_bmi_cohort)
+```
+
+```{r}
+# Put them in one giant dataframe. 
+# For some reason rbind doesn't work with this set of dataframes... see site below for context; had to use bind_rows instead
+# https://github.com/tidyverse/dplyr/issues/2138
+#con_al_pts <- rbind(con_ami_cohort, con_l_cohort)
+con_ba_pts <- bind_rows(con_bmi_cohort, con_a_cohort)
+rownames(con_ba_pts) <- con_ba_pts$person_id
+con_ba_pts <- con_ba_pts[complete.cases(con_ba_pts),]
+print(sum(is.na(con_ba_pts))) # Make sure no missing values
+```
+
+
+```{r}
+# Make sure have correct dimensions
+dim(con_ba_pts)
+```
+
+
+```{r}
+# Run matchit
+start_time <- Sys.time()
+
+m.out = matchit(UCSFDerivedRaceEthnicity_Clean ~ estimated_age + gender_concept_id + death_status, 
+                data = con_ba_pts, method = "nearest", ratio = 1, discard = 'both', reestimate = TRUE)
+m.data <- match.data(m.out,distance='pscore')
+
+end_time <- Sys.time()
+print(end_time - start_time)
+```
+
+
+```{r}
+summary(m.out, un = TRUE)
+```
+
+
+```{r}
+# Save results to MatchIt variable
+BA_con_MI <- m.data
+```
+
+
+```{r}
+
+##### Black - Asian MatchIt Results; get Asian MatchIt patients
+```
+
+
+```{r}
+# Asian patients
+A_con_MI <- BA_con_MI[BA_con_MI$UCSFDerivedRaceEthnicity_Clean == 0,]
+
+# Only keep non-MatchIt columns
+A_con_MI <- A_con_MI[, c(1:10)]
+
+print(dim(A_con_MI))
+```
+
+
+```{r}
+
+#### 3. MatchIt: Asian and white patients
+```
+
+
+```{r}
+# Asian patients; UCSFDerivedRaceEthnicity_Clean=1
+con_ami_cohort <- A_con_MI
+rownames(con_ami_cohort) <- con_ami_cohort$person_id
+con_ami_cohort[,'UCSFDerivedRaceEthnicity_Clean'] <- rep(1,nrow(con_ami_cohort))
+sprintf("con_ami_cohort dimensions: %s %s", dim(con_ami_cohort)[1],dim(con_ami_cohort)[2])
+```
+
+
+```{r}
+# white patients; UCSFDerivedRaceEthnicity_Clean=0
+con_w_cohort <- White_con_all
+rownames(con_w_cohort) <- con_w_cohort$person_id
+con_w_cohort[,'UCSFDerivedRaceEthnicity_Clean'] <- rep(0,nrow(con_w_cohort))
+sprintf("con_w_cohort dimensions: %s %s", dim(con_w_cohort)[1],dim(con_w_cohort)[2])
+```
+
+
+```{r}
+head(con_w_cohort)
+```
+
+
+```{r}
+# Put them in one giant dataframe. 
+# For some reason rbind doesn't work with this set of dataframes... see site below for context; had to use bind_rows instead
+# https://github.com/tidyverse/dplyr/issues/2138
+#con_al_pts <- rbind(con_ami_cohort, con_l_cohort)
+con_aw_pts <- bind_rows(con_ami_cohort, con_w_cohort)
+rownames(con_aw_pts) <- con_aw_pts$person_id
+con_aw_pts <- con_aw_pts[complete.cases(con_aw_pts),]
+print(sum(is.na(con_aw_pts))) # Make sure no missing values
+```
+
+
+```{r}
+# Make sure have correct dimensions (4891 x 10)
+dim(con_aw_pts)
+```
+
+
+```{r}
+# run matchit
+start_time <- Sys.time()
+
+m.out = matchit(UCSFDerivedRaceEthnicity_Clean ~ estimated_age + gender_concept_id + death_status, 
+                data = con_aw_pts, method = "nearest", ratio = 1, discard = 'both', reestimate = TRUE)
+m.data <- match.data(m.out,distance='pscore')
+
+end_time <- Sys.time()
+print(end_time - start_time)
+```
+
+
+```{r}
+summary(m.out, un = TRUE)
+```
+
+
+```{r}
+# Save results to MatchIt variable
+AW_con_MI <- m.data
+```
+
+
+```{r}
+# white patients
+W_con_MI <- AW_con_MI[AW_con_MI$UCSFDerivedRaceEthnicity_Clean == 0,]
+
+# Only keep non-MatchIt columns
+W_con_MI <- W_con_MI[, c(1:10)]
+
+print(dim(W_con_MI))
+```
+
+
+```{r}
+
+#### Compare covariates
+```
+
+
+```{r}
+# Check that dataframes have approximately equal dimensions
+df_list = list(B_con_MI, A_con_MI, L_con_MI, W_con_MI)
+df_names = list('Black', 'Asian', 'Latinx', 'white')
+df_both = list(df_list, df_names)
+```
+
+
+```{r}
+# Get dimensions for each dataframe
+for (df in df_list) {
+  print(dim(df))
+}
+```
+
+
+```{r}
+
+##### Sex proportions
+```
+
+
+```{r}
+# 8532 corresponds to female, 8507 corresponds to male
+```
+
+
+```{r}
+# all con_demo patients
+con_sex_value_counts = as.data.frame(table(con_demo$gender_concept_id))
+```
+
+
+```{r}
+# Need to add minus sign in front of column to order by descending
+con_sex_value_counts[order(-con_sex_value_counts$Freq),]
+```
+
+
+```{r}
+# % female for each demographic (1. Black, 2. Asian, 3. Latinx, 4. white)
+for (df in df_list) {
+  df_f <- df[df$gender_concept_id == 8532,]
+  print((nrow(df_f) / nrow(df)) * 100)
+}
+```
+
+
+```{r}
+
+##### % alive for each demographic (1. Black, 2. Asian, 3. Latinx, 4. white)
+```
+
+
+```{r}
+# A lot more dead patients UC-wide, probably due to death registry integration
+for (df in df_list) {
+  df_a <- df[df$death_status == 0,]
+  print((nrow(df_a) / nrow(df)) * 100)
+}
+```
+
+
+```{r}
+
+##### mean estimated age for each demographic (1. Black, 2. Asian, 3. Latinx, 4. white)
+```
+
+
+```{r}
+for (df in df_list) {
+  print(mean(df[["estimated_age"]]))
+}
+```
+
+```{r}
+
+### double check all the MatchIt patients are a subset of control patients stratified by race/ethnicity
+
+# Should all return false because the 'check' array should return all TRUE values
+```
+
+
+```{r}
+# Black control patients
+B_check <- B_con_MI$person_id %in% Black_con_all$person_id
+any(B_check = FALSE)
+```
+
+
+```{r}
+# Asian control patients
+A_check <- A_con_MI$person_id %in% Asian_con_all$person_id
+any(A_check = FALSE)
+```
+
+
+```{r}
+# Latinx control patients
+L_check <- L_con_MI$person_id %in% Latinx_con_all$person_id
+any(L_check = FALSE)
+```
+
+
+```{r}
+# white control patients
+W_check <- W_con_MI$person_id %in% White_con_all$person_id
+any(W_check = FALSE)
+```
+
+
+```{r}
+
+##### Add back in the UCSFDerivedRaceEthnicity_Clean values for each dataframe
+```
+
+
+```{r}
+# Black patients
+B_con_MI[,'UCSFDerivedRaceEthnicity_Clean'] <- rep('Black or African American',nrow(B_con_MI))
+```
+
+
+```{r}
+# Asian patients
+A_con_MI[,'UCSFDerivedRaceEthnicity_Clean'] <- rep('Asian',nrow(A_con_MI))
+```
+
+
+```{r}
+# Latinx patients
+L_con_MI[,'UCSFDerivedRaceEthnicity_Clean'] <- rep('Latinx',nrow(L_con_MI))
+```
+
+
+```{r}
+# white patients
+W_con_MI[,'UCSFDerivedRaceEthnicity_Clean'] <- rep('White or Caucasian',nrow(W_con_MI))
+```
+
+
+##### combine MatchIt dataframes
+
+```{r}
+RE_MI_con_df <- bind_rows(B_con_MI, A_con_MI, L_con_MI, W_con_MI)
+```
+
+
+```{r}
+head(RE_MI_con_df)
+```
+
+
+```{r}
+# Check rows 844 x 4 = 3376
+dim(RE_MI_con_df)
+```
+
+
+```{r}
+
+#### Save file
+```
+
+
+```{r}
+write.csv(RE_MI_con_v2_df,"RE_MI_con_demo.csv", row.names = FALSE)
+```
