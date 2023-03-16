@@ -2,11 +2,9 @@
 
 ## Install tableone and excel 
 install.packages("tableone")
-#install.packages("openxlsx") - NOT USED
 
 ## tableone package itself
 library(tableone)
-#library(openxlsx) - NOT USED
 
 ## Changed the working directory via GUI:
 ## Session -> Set Working Directory -> Choose Directory...
