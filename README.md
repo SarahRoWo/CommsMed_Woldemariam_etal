@@ -1,4 +1,4 @@
-This code repository is associated with **Similarities and Differences in Alzheimer’s Disease Comorbidities in Racialized Populations identified from Electronic Medical Records**
+This code repository is associated with **[Similarities and differences in Alzheimer’s dementia comorbidities in racialized populations identified from electronic medical records](10.1038/s43856-023-00280-2)**
 
 Overview: Code for Running Analyses, with guidance on how to define cohort and obtain diagnoses. Follow below after generating venv using requirements.txt
 
